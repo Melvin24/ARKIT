@@ -84,8 +84,11 @@ class Plane: SCNNode {
          */
         planeGeometry.width = CGFloat(anchor.extent.x)
         planeGeometry.height = CGFloat(anchor.extent.z)
-
-//        position = SCNVector3(anchor.center.x, 0, anchor.center.z);
+        
+        _ = self.childNodes.map {
+            $0.physicsBody?.physicsShape = SCNPhysicsShape(geometry: planeGeometry, options: nil)
+        }
+        //        position = SCNVector3(anchor.center.x, 0, anchor.center.z);
         
         setTextureScale()
     }

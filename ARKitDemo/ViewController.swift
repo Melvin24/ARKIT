@@ -52,6 +52,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
          */
         let configuration = ARWorldTrackingConfiguration()
         configuration.planeDetection = .horizontal
+        
         sceneView.session.run(configuration)
         
         // Set a delegate to track the number of plane anchors for providing UI feedback.
@@ -66,6 +67,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         // Show debug UI to view performance metrics (e.g. frames per second).
         sceneView.showsStatistics = true
+        
+        sceneView.autoenablesDefaultLighting = true
         
         sceneView.debugOptions = [ARSCNDebugOptions.showFeaturePoints]
     }
