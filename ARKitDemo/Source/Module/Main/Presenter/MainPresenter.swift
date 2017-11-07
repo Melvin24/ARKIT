@@ -11,13 +11,6 @@ import ARKit
 
 class MainPresenter {
     
-    struct CollisionTypes : OptionSet {
-        let rawValue: Int
-        
-        static let target  = CollisionTypes(rawValue: 1 << 0)
-        static let shape = CollisionTypes(rawValue: 1 << 1)
-    }
-    
     weak var viewController: MainView?
     
     func randomPlane(from planes: [UUID: Plane]) -> Plane? {
@@ -84,7 +77,7 @@ class MainPresenter {
         let sphereBody = SCNPhysicsBody(type: .dynamic, shape: sphereShape)
         
         sphereBody.mass = 1.25
-        sphereBody.categoryBitMask = CollisionTypes.shape.rawValue
+//        sphereBody.categoryBitMask = CollisionTypes.shape.rawValue
         node.physicsBody = sphereBody
         aBox.firstMaterial?.diffuse.contents = UIColor.red
         // We insert the geometry slightly above the point the user tapped
@@ -94,36 +87,14 @@ class MainPresenter {
         return node
     }
     
-    func detectorNode() -> SCNNode {
-        let aBox = SCNBox(width: 0.6, height: 0.6, length: 0.1, chamferRadius: 0.2)
-        aBox.firstMaterial?.diffuse.contents = UIColor.yellow
+   
+    func ballNode() -> SCNNode {
+        let geometry:SCNGeometry = SCNSphere(radius: 0.2)
+        geometry.materials.first?.diffuse.contents = UIColor.orange
         
-        let node = SCNNode(geometry: aBox)
-        node.eulerAngles.x = -.pi / 2
+        let ball = SCNNode(geometry: geometry)
         
-        let targetShape = SCNPhysicsShape(geometry: aBox, options: nil)
-        let targetBody = SCNPhysicsBody(type: .kinematic, shape: targetShape)
-        
-        targetBody.restitution = 0.0
-        targetBody.friction = 1.0
-        targetBody.categoryBitMask = CollisionTypes.target.rawValue
-        targetBody.contactTestBitMask = CollisionTypes.shape.rawValue
-        
-        node.physicsBody = targetBody
-        
-        
-        return node
-    }
-    
-    func ringNode() -> SCNNode {
-        let geometry:SCNGeometry = SCNTorus(ringRadius: 0.4, pipeRadius: 0.08)
-        geometry.materials.first?.diffuse.contents = UIColor.blue
-        
-        let ringNode = SCNNode(geometry: geometry)
-        
-        ringNode.eulerAngles.x = -.pi / 2
-        return ringNode
-        
+        return ball
     }
     
     func debugMessage(for frame: ARFrame, trackingState: ARCamera.TrackingState) -> String {

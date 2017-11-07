@@ -12,28 +12,38 @@ import ARKit
 
 class MainView: UIViewController, ARSCNViewDelegate, ARSKViewDelegate {
     
-    //category bit masks for ball node and target node
-    // ball = 0001 -> 1 and target = 0010 ->2
-    static let collisionRollingBall: Int = 1 << 0
-    static let collsionTarget: Int = 1 << 1
-    
-    var finiteTimer: Timer!
-    
     var presenter: MainPresenter!
     
-    var ringNode: SCNNode?
-    var detectorNode: SCNNode?
+    var ringContainerNode: RingContainerNode?
     
     // A dictionary of all the current planes being rendered in the scene
     var planes: [UUID : Plane] = [:]
     
+    var currentBallNode: BallNode?
     @IBOutlet var sceneView: ARSCNView!
     @IBOutlet weak var sessionInfoView: UIView!
     @IBOutlet weak var sessionInfoLabel: UILabel!
     
+    // Ball throwing mechanics
+    var startTouchPoint: UITouch!
+    var endTouchPoint: UITouch!
+    var touchingBall = false
+    
+    var startHitResult: SCNVector3?
+    var endHitResult: SCNVector3?
+
+    // Node that intercept touches in the scene
+    lazy var touchCatchingPlaneNode: SCNNode = {
+        let node = SCNNode(geometry: SCNPlane(width: 40, height: 40))
+        node.opacity = 0.001
+        node.castsShadow = false
+        return node
+    }()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
-        self.sceneView.scene.physicsWorld.gravity = SCNVector3Make(0, -1, 0)
+        
+        self.sceneView.scene.physicsWorld.gravity = SCNVector3Make(0, -6, 0)
         setupTapGestureRecogniser(for: sceneView)
         sceneView.scene.physicsWorld.contactDelegate = self
 
@@ -47,7 +57,6 @@ class MainView: UIViewController, ARSCNViewDelegate, ARSKViewDelegate {
             return
         }
         
-        finiteTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true, block: didCallTimer)
         presenter.setupSceneView(sceneView)
         
     }
@@ -57,13 +66,155 @@ class MainView: UIViewController, ARSCNViewDelegate, ARSKViewDelegate {
         
         // Pause the view's session
         sceneView.session.pause()
-        
-        finiteTimer.invalidate()
+    }
+
+    func setupTapGestureRecogniser(for sceneView: ARSCNView) {
+        let tapGestureRec = UITapGestureRecognizer(target: self, action: #selector(tapped(recognizer:)))
+        sceneView.addGestureRecognizer(tapGestureRec)
     }
     
-    func didCallTimer(timer: Timer) {
-//        addNodeToSceneView()
+    @objc func tapped(recognizer: UIGestureRecognizer) {
+        
+        guard self.ringContainerNode == nil else { return }
+        
+        let tapPoint = recognizer.location(in: sceneView)
+        let nodeHitResult = sceneView.hitTest(tapPoint, types: .existingPlaneUsingExtent)
+
+        if let hitResult = nodeHitResult.first {
+            addRingToScene(for: hitResult)
+            addBallForUsers()
+        }
+        
     }
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        
+        for firstTouch in touches {
+            
+            let location = firstTouch.location(in: sceneView)
+            
+            startHitResult = SCNVector3Make(Float(location.x), Float(location.y), -1.6)
+            touchingBall = true
+//            let hitResults = sceneView.hitTest(location, options: [:])
+//            if hitResults.first?.node == currentBallNode {
+//                startHitResult = hitResults.first
+//                startTouchPoint = firstTouch
+//            }
+            
+        }
+        
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesEnded(touches, with: event)
+        
+        for touch in touches {
+            
+            let location = touch.location(in: sceneView)
+            endHitResult = SCNVector3Make(Float(location.x), Float(location.y), -1.6)
+            touchingBall = true
+            throwBall()
+//            let hitResults = sceneView.hitTest(location, options: [:])
+//
+//            if touchingBall {
+//                endHitResult = hitResults.first
+//                endTouchPoint = touch
+//                touchingBall = false
+//            }
+        
+        
+        }
+    }
+    
+    func throwBall() {
+        guard let hitResultStart = self.startHitResult,
+            let hitResultEnd = self.endHitResult else {
+                return
+        }
+        
+        print(hitResultStart)
+        print(hitResultEnd)
+        
+        let changeInX = (hitResultEnd.x - hitResultStart.x)/100
+        var changeInY = (hitResultEnd.y - hitResultStart.y)/100
+        
+        if changeInY < 0 {
+            changeInY = abs(changeInY)
+        }
+        
+        let changeInZ = hitResultEnd.z
+        
+
+//        print("MelvinEND Z", hitResultEnd.worldCoordinates.z)
+//        print("MelvinSTART Z", hitResultStart.worldCoordinates.z)
+//        print("MelvinEND Y", endYDirection)
+
+//        print("starthitresult", hitResultStart)
+//        print("endHitResult", hitResultEnd)
+//        print("change", xChange)
+        
+        // Set up the balls physics properties
+        guard let currentBallNode = self.currentBallNode else {
+            return
+        }
+        
+        print("MELVIN", SCNVector3Make(changeInX, changeInY, changeInZ))
+        currentBallNode.physicsBody = SCNPhysicsBody(type: .dynamic,
+                                                    shape: SCNPhysicsShape(geometry: currentBallNode.geometry ?? SCNSphere(radius: 0.1),
+                                                                            options: nil))
+//        ball.physicsBody?.categoryBitMask = pc.ball
+//        ball.physicsBody?.collisionBitMask = pc.sG
+//        ball.physicsBody?.contactTestBitMask = pc.base
+//        ball.physicsBody?.affectedByGravity = true
+//        ball.physicsBody?.isDynamic = true
+        
+        currentBallNode.physicsBody?.applyForce(SCNVector3Make(changeInX, changeInY, changeInZ), asImpulse: true)
+        
+        addBallForUsers()
+  
+    }
+
+    func addRingToScene(for closestHitResult: ARHitTestResult) {
+        let ringNode = RingNode()
+        
+        ringNode.setupRingNode(withCategoryBitMask: CollisionTypes.shape.rawValue,
+                                contactTestBitMask: CollisionTypes.target.rawValue)
+
+        
+        let containerNode = RingContainerNode(withRingNode: ringNode)
+        
+        setPosition(hitResult: closestHitResult, withNode: containerNode)
+        
+        containerNode.constraints = [SCNBillboardConstraint()]
+
+        sceneView.scene.rootNode.addChildNode(containerNode)
+        
+        self.ringContainerNode = containerNode
+    }
+    
+    func addBallForUsers() {
+        
+        let ballNode = BallNode()
+        ballNode.setupBallNode(withCategoryBitMask: CollisionTypes.shape.rawValue)
+
+        ballNode.position = SCNVector3(x: 0, y: -0.4, z: -1)
+        
+        self.sceneView.pointOfView?.addChildNode(ballNode)
+        self.currentBallNode = ballNode
+    }
+    
+    
+    func setPosition(hitResult: ARHitTestResult, withNode node: SCNNode) {
+        
+        node.position = SCNVector3Make(
+            hitResult.worldTransform.columns.3.x,
+            hitResult.worldTransform.columns.3.y + 0.5,
+            hitResult.worldTransform.columns.3.z
+        )
+        
+    }
+
     
     
     func addNodeToSceneView() {
@@ -71,65 +222,10 @@ class MainView: UIViewController, ARSCNViewDelegate, ARSKViewDelegate {
         let minVector = SCNVector3Make(-0.3, 1, -2)
         
         let position = presenter.randomVector(from: (minVector, maxVector))
-
+        
         let node = presenter.makeNodeAt(position: position)
         sceneView.pointOfView?.addChildNode(node)
     }
-    
-    func setupTapGestureRecogniser(for sceneView: ARSCNView) {
-        let tapGestureRec = UITapGestureRecognizer(target: self, action: #selector(tapped(recognizer:)))
-        sceneView.addGestureRecognizer(tapGestureRec)
-    }
-    
-    
-    @objc func tapped(recognizer: UIGestureRecognizer) {
-        let tapPoint = recognizer.location(in: sceneView)
-        let nodeHitResult = sceneView.hitTest(tapPoint, options: nil)
-
-        if let firstHitNode = nodeHitResult.first {
-            let node = firstHitNode.node
-            node.physicsBody?.applyForce(SCNVector3Make(-0.1, 0.1, -0.1), asImpulse: true)
-//            node.isHidden = true
-//            node.removeFromParentNode()
-//            self.selectedNode = firstHitNode.node
-//            self.hitResultWorldCoordinate = firstHitNode.worldCoordinates
-        }
-        
-        addRingToScene(for: tapPoint)
-       
-    }
-
-    func addRingToScene(for tapPoint: CGPoint) {
-        let hitResult = sceneView.hitTest(tapPoint, types: [.featurePoint])
-        guard ringNode == nil, let closestHitResult = hitResult.first  else {
-            return
-        }
-        
-        let detectorNode = presenter.detectorNode()
-        
-        ringNode = presenter.ringNode()
-        self.detectorNode = detectorNode
-        
-        setPosition(hitResult: closestHitResult, withNode: ringNode!)
-        self.detectorNode?.position = SCNVector3Make(0, 0.16, 0)
-        self.ringNode?.addChildNode(self.detectorNode!)
-        
-        sceneView.scene.rootNode.addChildNode(ringNode!)
-        
-    }
-    
-    func setPosition(hitResult: ARHitTestResult, withNode node: SCNNode) {
-        
-        node.position = SCNVector3Make(
-            hitResult.worldTransform.columns.3.x,
-            hitResult.worldTransform.columns.3.y - 0.2,
-            hitResult.worldTransform.columns.3.z
-        )
-        
-    }
-    
-    
-    
     
     
     func resetTracking() {
@@ -176,4 +272,14 @@ extension MainView: SCNPhysicsContactDelegate {
     func physicsWorld(_ world: SCNPhysicsWorld, didBegin contact: SCNPhysicsContact) {
     }
     
+}
+
+extension MainView {
+    
+    struct CollisionTypes : OptionSet {
+        let rawValue: Int
+        
+        static let target  = CollisionTypes(rawValue: 1 << 0)
+        static let shape = CollisionTypes(rawValue: 1 << 1)
+    }
 }
